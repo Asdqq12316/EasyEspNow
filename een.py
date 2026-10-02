@@ -1,29 +1,42 @@
-# een.py
+# een.py —— EasyEspNow (EEN)
+# MicroPython ESP-NOW 极简封装
+# 默认 ESP-NOW v1，字符串进字符串出，设完目标不用再管 MAC
 import network
 import espnow
 
 
 class EEN:
     def __init__(self):
+        # WLAN 自动初始化
         self._wlan = network.WLAN(network.WLAN.IF_STA)
         self._wlan.active(True)
         try:
-            self._wlan.disconnect()
+            self._wlan.disconnect()      # ESP8266 需要，避免自动连 AP
         except OSError:
             pass
 
-        self._e = espnow.ESPNow(version=1)   # 默认 v1
+        # ESP-NOW 初始化（默认 v1，自动兼容老固件）
+        self._e = self._make(1)
         self._e.active(True)
 
-        self._dst = None
-        self._peers = set()
-        self._rules = {}                      # 'msg' -> 函数
+        self._dst = None                 # 目标 MAC (bytes)
+        self._peers = set()              # 已注册的 peer
+        self._rules = {}                 # 'msg' -> 函数
         self._irq = False
 
-        self.msg = None
-        self.src = None
+        self.msg = None                  # 最近消息（字符串）
+        self.src = None                  # 最近来源（字符串）
 
-    # ---------- 工具 ----------
+    # ---------- 兼容不同固件 ----------
+    @staticmethod
+    def _make(ver):
+        """老固件不支持 version= 参数，自动回退"""
+        try:
+            return espnow.ESPNow(version=ver)
+        except TypeError:
+            return espnow.ESPNow()
+
+    # ---------- 字符串 ↔ bytes ----------
     @staticmethod
     def _b(mac):
         if isinstance(mac, (bytes, bytearray)):
@@ -34,7 +47,7 @@ class EEN:
     def _s(mac):
         return ':'.join('%02x' % b for b in mac)
 
-    # ---------- ① 设目标 ----------
+    # ---------- ① 设置发送目标（一次就够）----------
     def to(self, mac):
         self._dst = self._b(mac)
         if self._dst not in self._peers:
@@ -42,16 +55,16 @@ class EEN:
             self._peers.add(self._dst)
         return self
 
-    # ---------- ② 改版本 ----------
+    # ---------- ② 改 ESP-NOW 版本 ----------
     def ver(self, n):
         self._e.active(False)
-        self._e = espnow.ESPNow(version=n)
+        self._e = self._make(n)
         self._e.active(True)
-        for p in self._peers:
+        for p in self._peers:            # 重新注册
             self._e.add_peer(p)
         return self
 
-    # ---------- ③ 发送 ----------
+    # ---------- ③ 发送字符串 ----------
     def send(self, data):
         if self._dst is None:
             raise ValueError('先调用 e.to(mac)')
@@ -60,6 +73,7 @@ class EEN:
         return self._e.send(self._dst, data)
 
     # ---------- ④ 接收 ----------
+    # if 用法：非阻塞
     def got(self, ms=0):
         try:
             src, msg = self._e.recv(ms)
@@ -74,14 +88,15 @@ class EEN:
             self.msg = repr(msg)
         return True
 
+    # while 用法：阻塞（可带超时毫秒）
     def wait(self, ms=None):
         return self.got(ms)
 
-    # ---------- 收到什么就干嘛 ----------
+    # 收到什么就干嘛（不阻塞主循环）
     def when(self, msg, cb):
         """
-        e.when('led on', led.on)          # 直接传函数名
-        e.when('ping',   pong)            # 传你自己定义的函数
+        e.when('on',  led.on)         # 收到 'on' -> led.on()
+        e.when('ping', pong)          # 收到 'ping' -> pong()
         """
         self._rules[msg] = cb
         self._start()
