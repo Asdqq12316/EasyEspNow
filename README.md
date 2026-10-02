@@ -1,0 +1,2 @@
+# EasyEspNow
+EEN是一个基于micropython的库，它可以帮助你更加方便的使用espnow通信
