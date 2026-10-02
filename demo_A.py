@@ -1,4 +1,5 @@
 # demo_A.py —— 发送端
+# 型号：ESP32 或 ESP8266 均可，代码完全一致
 #
 # 用法：
 #   1. 先运行 demo_B.py，记下它打印出的本机 MAC
@@ -14,12 +15,15 @@ e = een.EEN()
 print('本机 MAC:', e.mac())
 print('目标 MAC:', TARGET)
 
-e.to(TARGET)
+e.to(TARGET)                       # 设一次，之后不用再管
 
-# 定时发送
 n = 0
 while True:
     n += 1
-    e.send('hello %d' % n)
-    print('已发送 hello %d' % n)
-    time.sleep(2)
+    e.send('a')
+    print('发 a', n)
+    time.sleep(1)
+
+    e.send('b')
+    print('发 b', n)
+    time.sleep(1)
